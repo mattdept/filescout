@@ -1,7 +1,7 @@
 Summary: A command line tool used to investigate the point of entry of malicious files.
 Name: filescout
 Version: 2
-Release: 7
+Release: 9
 Group: mrjung
 BuildArch: noarch
 License: GPL
@@ -26,6 +26,9 @@ cp %{_topdir}/usr/share/man/man1/filescout.1 $RPM_BUILD_ROOT/usr/share/man/man1/
 rm -r -f "$RPM_BUILD_ROOT"
 
 %changelog
+* Tue Oct 3 2017 Matt Jung 2.9
+- Straight up skipped 2.8
+- Added the -b flag to force use of file creation time.
 * Tue Sep 5 2017 Matt Jung 2.7
 - Removed empty string checks for each preceding section
 - Apache domlog dive: look for GET requests during the same time period ONLY if no POST request returns
