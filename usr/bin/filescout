@@ -1,0 +1,571 @@
+#!/bin/bash
+#Written by: 	Matt Jung  
+#Created on: 	June 10, 2017	
+#Purpose: 	Determine the upload method for a file based on its timestamp.
+
+#Get flags used, set variable if -c or -m are used
+change_override=
+modify_override=
+bold=$(tput bold)
+normal=$(tput sgr0)
+option1=$1
+option2=$2
+option3=$3
+option4=$4
+###############################################################################
+
+#For outputting the version of filescout:
+version () {
+echo 'Filescout - Version 2.9'
+}
+
+###############################################################################
+
+#function to echo out the script usage:
+usage () {
+echo
+printf '\tUsage:  filescout [ -m ] [ -c ] FILE'
+echo
+printf '\tFlags:\t \n' 
+printf "\t\t-h  Displays the help menu.\n"
+printf "\t\t-v  Displays the version of Filescout\n"
+printf "\t\t-m  Force use of the Modified timestamp.\n"
+printf "\t\t-c  Force use of the Change timestamp.\n"
+printf "\t\t-b  Force use of the file's CREATION timestamp (Only available on ext4 filesystems)"
+printf "\t\t-r  [Experimental] Enables recursive searching. Lets you investigate a file that uploaded a file that uploaded a file....and so on.\n"
+printf "\t\t-t \'STAT TIMESTAMP\' USER\n"
+printf "\t\t\t Example usage with -t:\n"
+printf "\t\t\t filescout -t \'2017-06-26 16:25:26.473000000 -0400\' myuser \n\t\t\t (The timestamp MUST be in quotes)\n"
+exit
+}
+
+###############################################################################
+
+fourargcheck () {
+#Check for more than 3 args, which should be the max if -t is used
+
+if [[ -n $option4 ]]
+    then
+    echo [ERROR] Too many arguments.
+    usage
+    exit
+fi
+#And check for less than 3 args
+if [[  -z $option3 ]]
+    then
+        echo '[ERROR] Missing Argument (Possibly missing the user andor timestamp?)'
+        usage
+        exit
+fi
+} #End 4argcheck
+
+###############################################################################
+
+#Check for more than 2 args, which should be the max if -c or -m is used
+threeargcheck () {
+if [[ -n $option3 ]]
+    then
+        echo [ERROR] Too many arguments.
+        usage
+        exit
+fi
+} #End 3argcheck
+
+###############################################################################
+
+#check for more than 1 arg, which is the max for common usage with no flags
+twoargcheck () {
+if [[ $option1 != -* ]] && [[ -n $option2 ]]
+    then
+        echo [ERROR] Too many arguments.
+        usage
+        exit
+fi
+} #End 2argcheck
+
+###############################################################################
+
+#function for outputting the section headers
+dashes () {
+echo ============================================
+}
+
+###############################################################################
+
+#logic to force use of -c or -m flags before the file argument. Only $1 should be a flag.
+inputlogic () {
+if [[ $2 == -* ]] || [[ $3 == -* ]] || [[ $4 == -* ]] 
+    then
+        echo '[ERROR] Optional flags ( -c or -m ) must come BEFORE the file'
+	usage
+fi
+#Logic to set $file from the second argument if a flag is used, otherwise set $file from the first argument
+if [[ $option1 == -* ]]
+    then 
+        file=$option2
+    else 
+	file=$option1
+fi
+} #end inputlogic
+
+###############################################################################
+
+#Check to make sure the user privded a file as an arg before proceeding
+inputcheck () {
+if [[ -z "$file" ]]
+    then
+        echo -e "[ERROR]\t No input file specified!"
+        usage
+	exit
+fi
+} #end inputcheck
+
+###############################################################################
+
+#Make sure the file provided actually exists before proceeding
+filecheck () {
+if [[ ! -e "$file" ]]
+    then
+        echo "[ERROR] File: $file does not exist!"
+	usage
+    	exit
+fi
+} #end filecheck
+
+###############################################################################
+
+#check to see if this is a plesk environment, and recommend they use filescout-plesk instead
+pleskcheck () {
+if [[ -e /usr/local/psa/version ]] 
+    then
+	echo Plesk environment detected! Use the Plesk version of filescout, which can be found here: http://mattjung.net/wiki/filescout-for-plesk/
+	exit 
+fi
+} #end pleskcheck
+
+###############################################################################
+
+#Generate variables to use for later on
+filestats () {
+user=`stat -c %U $file`
+#Get the absolute path of the file, makes the output a little more useful if the environments bash prompt does not include the full PWD.
+abspath=`readlink --canonicalize $file`
+mod_time=`stat -c %Y $file`
+change_time=`stat -c %Z $file`
+} #end filestats
+
+###############################################################################
+
+#create function for timestamp section
+timestamp_header () {
+dashes
+echo "          Stats and timestamps            "
+dashes
+echo   
+} #end timestamp_header
+
+###############################################################################
+
+#begin deep-dive recursive check. If enabled with the -r, recursively checks to see what uploaded a file that uploaded a file, and goes until nothing else is found.
+deep_dive () {
+if [[ "$deep_dive_override" == "1" ]]
+    then
+	#only proceed if a file didn't self-modify itself. Prevents an infinite loop.
+        if [[ "$posted_file" != "$file" ]]
+        then
+	    filescout -r "$posted_file"
+        fi
+fi
+} #End deep dive
+
+###############################################################################
+
+#determine the more recent timestamp between the modify and change time, and use the more recent time going forward
+timestamp_logic () {
+if [[ "$mod_time" -gt "$change_time" ]]
+    then
+	time_to_use=$mod_time
+	timestamp_type='modified time'
+	#else printf "The ${bold}change${normal} time is equal to, or more recent than the modified time. Using the change time going forward.\n"
+    else
+	time_to_use=$change_time
+	timestamp_type='change time'
+fi
+} # end timestamp_logic
+
+###############################################################################
+
+timestamp_overrides () {
+#If -c or -m are used, override $time_to_use and $timestamp_type
+if [[ $modify_override = 1 ]]
+    then 
+	echo Modify timestamp override enabled via -m. Using the Modified timestamp when searching through logs.
+        time_to_use=$mod_time
+        timestamp_type='modified time'
+fi
+
+if [[ $change_override = "1" ]]
+    then
+	echo Change timestamp override enabled via -c. Using the change timestamp when searching through logs.
+        time_to_use=$change_time
+        timestamp_type='change time'
+fi
+} #end timestamp_overrides
+
+###############################################################################
+
+timestamp_echo () {
+#Just outputs whether the script is going to rely on the file's modified or change timestamp after applying the above logic or overrides.
+if [[ "$timestamp_type" == "modified time" ]]
+    then
+	echo "Filescout will be using the ${bold}modified${normal} timestamp of $file going forward. If you wish to use the change time, use the -c flag."
+else 	echo "Filescout will be using the ${bold}change${normal} timestamp of $file going forward. If you wish to use the modified time, use the -m flag."
+fi
+echo
+} # end timestamp_echo
+
+###############################################################################
+
+stat_output () {
+echo
+#Output of the stat of the absolute path. If Birth is -, then omit that from the output.
+stat $abspath |grep -v 'Birth: -'
+} #end stat_output
+
+###############################################################################
+
+#If the file permisisons are already 000, print a warning, as the timestamp would have been adjusted at the time of chmodding the file.
+permcheck () {
+if [[ "`stat -c %a $abspath`" = "0" ]]
+    then 
+	echo "${bold}[WARNING]  The file permissions on $file are already 000 - The timestamp is no longer likely accurate for determining its point of entry${normal}"
+	echo "If you have taken a stat of the file prior to altering it, you can use the -t flag to give filescout a timestamp and user to investigate"
+fi
+echo
+} #end permcheck
+
+###############################################################################
+
+log_diving_header () {
+dashes
+echo "               Log diving                 "   
+dashes
+echo
+} #end log_diving_header
+
+###############################################################################
+
+
+
+###############################################################################
+file_birth_timestamp () {
+#Leveraging debugfs and stat to get the date of the file's BIRTH (which is only invoked with the -b flag), which stat currently leaved blank as Birth: -
+#Currently has only been tested on EXT4 filesystems, It does not look hopeful for EXT3 or older filesystems
+
+#So to begin, we need to check and see if the location of the file is on an EXT4 filesystem.
+#Using df -T seems to be the simplest way to get that info.
+echo $abspath
+filesystem_info=$(df -T $abspath |tail -n 1| awk '{print $1" "$2'})
+echo filesystem info: $filesystem_info
+
+filesystem_type=$(echo $filesystem_info | awk '{print $2}')
+echo filesystem_type: $filesystem_type
+
+filesystem_location=$(echo $filesystem_info | awk '{print $1}')
+echo filesystem_location: $filesystem_location
+
+
+
+#Now we compare $filesystem_type to see if it matches "ext4".
+#Proceed if it is EXT4, exit with 1 if not and print error
+if [[ "$filesystem_type" == "ext4" ]]
+    then
+    :
+    else
+        printf "[ERROR]\t Detected NON-EXT4 filesystem!\n"
+        echo "[INFO]\tThe -b flag for creation time ONLY works if the file resides on an EXT4 filesystem.\n"
+    exit 1
+fi
+
+#Now at this point, we've established that we're on an ext4 filesystem, so we can proceed with using debugfs and stat to get the crtime.
+creation_time=$(debugfs -R "stat  $abspath" $filesystem_location  2>1 |grep crtime |awk '{print $5" "$6" "$8" "$7}')
+echo creation_time: $creation_time
+time_to_use=$(date -d "$creation_time" +%s)
+echo creation_time_in_epoch: $time_to_use
+
+} #end file_birth_timestamp
+###############################################################################
+#Function for Apache domlog diving and output
+apache_domlog_dive () {
+
+#Convert the more recent timestamp (change/modify) to the apache log timestamp format, with the last digit of the second omitted.
+apache_timestamp=$(date -d @$time_to_use +%e/%b/%Y:%R:`date -d @$time_to_use +%S|head -c1`)
+#Once we've determined the timestamp to use, set variables for the month and year for parse the correct archived apache domlogs.
+stat_month=`date -d @$time_to_use +%b`
+stat_year=`date -d @$time_to_use +%Y`
+
+#do domlog diving, and set the output of each grep result as a variable, which we can reference later on
+apache_domlog_result=`zgrep $apache_timestamp  /usr/local/apache/domlogs/$user/$each* /home/$user/logs/$each*-$stat_month-$stat_year* |grep POST`
+if [[ -n "$apache_domlog_result" ]]
+    then
+	echo Found HTTP POST entry when searching when grepping for a 10 second window around the $timestamp_type in the Apache domlogs. 
+	echo
+
+#For each line of domlog output, show the line, convert the file POSTed to to an absolute path, and recommend a review of other actions taken by the IP.
+        while read domlog_entry
+            do
+                echo ${bold}$domlog_entry${normal}
+		posted_file=$(sed -e 's/[:=]/ /g' /etc/userdatadomains | awk '{print $1"@"$6}' |egrep "^`echo $domlog_entry |cut -d':' -f1 |tr '/' '\n' |tail -1|cut -d "-" -f1`" |cut -d '@' -f2)$(echo $domlog_entry |awk '{print $7}')
+                        
+                echo
+		#Only show the following echo if the POSTed file ends with .php, 
+                #avoids issues where no filename is shown if its the endex, 
+                #or a CMS page that doesn't have an associated file (aside from index.php)
+		if [[ "$posted_file" == *.php ]]
+		    then
+			echo The above POST request was directed at this file: $posted_file
+				
+                        #Add extra warning if the POSTed file is directed at /wp-admin/theme-editor.php, 
+                        #which is a telltale sign of wp-admin password compromise.
+		fi
+                if [[ "$posted_file" == */wp-admin/theme-editor.php* ]]
+	            then
+		    echo
+		    echo ${bold}[IMPORTANT] A POST request to \'/wp-admin/theme-editor.php\' strongly implies the password for wp-admin has been compromised. It is strongly advised you review the traffic from $(echo $apache_domlog_result |cut -d ":" -f2 |cut -d " " -f1) to see if that IP logged into wp-admin. All administrative users in the site\'s database should be reviewed, and their password should be reset.${normal}
+				
+                    echo
+			
+		fi
+		echo You should review the above file if you have not already done so.
+		echo
+		echo You can also review the log for any other actions taken by that same IP:
+		echo "zgrep $(echo $apache_domlog_result |cut -d ":" -f2 |cut -d " " -f1) $(echo $apache_domlog_result |cut -d ":" -f1)"
+		#Deep dive section, does nothing unless -r is used.
+		deep_dive
+	done <<< "$apache_domlog_result"
+    else :
+fi
+
+#Adding a section to perform the same grep as above, but without the additional |grep for POST 
+#Only being used if $apache_domlog_result was empty
+if [[ -z "$apache_domlog_result" ]]
+    then
+        echo "No POST requests for in the apache domlogs, increasing the scope of the search to include any HTTP request type near a 10 second window areound the $timestamp_type"
+        apache_domlog_result_all=$(zgrep $apache_timestamp  /usr/local/apache/domlogs/$user/$each* /home/$user/logs/$each*-$stat_month-$stat_year*)
+            if [[ -n $apache_domlog_result_all ]]
+            then
+            while read domlog_entry
+                do
+                    echo ${bold}$domlog_entry${normal}
+                    posted_file=$(sed -e 's/[:=]/ /g' /etc/userdatadomains | awk '{print $1"@"$6}' |egrep "^`echo $domlog_entry |cut -d':' -f1 |tr '/' '\n' |tail -1|cut -d "-" -f1`" |cut -d '@' -f2)$(echo $domlog_entry |awk '{print $7}')
+    
+                    echo You should review the above file if you have not already done so.
+                    echo
+                    echo You can also review the log for any other actions taken by that same IP:
+                    echo "zgrep $(echo $apache_domlog_result_all |cut -d ":" -f2 |cut -d " " -f1) $(echo $apache_domlog_result_all |cut -d ":" -f1)"
+                    #Deep dive section, does nothing unless -r is used.
+                    deep_dive
+                    echo
+            done <<< "$apache_domlog_result_all"
+            fi
+fi
+} #end apache_domlog_dive
+
+###############################################################################
+
+#function for FTP uploads
+ftp_log_dive () {
+#next check for an FTP upload:
+ftp_log_result=$(grep -H "$(date -d @$time_to_use '+%b[[:blank:]]*%-d[[:blank:]]* %k:%M:'`date -d @$time_to_use +%S|head -c1`)" /var/log/messages* |grep uploaded)
+if [[ -n "$ftp_log_result" ]]
+    then
+        echo "Found FTP upload entry when searching /var/log/messages* based on the $timestamp_type of $file. The password for${bold} $(echo $ftp_log_result |awk '{print $6}' |sed 's#(\(.*\)@.*#\1#')${normal} should be reset to a longer, secure password. Users who have connected to that account should scan their local machines for viruses such as keyloggers."
+#credit to mwineland on the above sed to grab the FTP usernames from the log entry.
+	echo
+        while read ftp_entry; do
+            echo ${bold}$ftp_entry${normal}
+        done <<< "$ftp_log_result"
+	echo
+   else :
+fi
+} #end ftp_log_dive
+
+###############################################################################
+
+#function for cpanel file manager uploads
+file_manager_log_dive () {
+#then look for cPanel file manager uploads. The cPanel access log appears to always log in UTC time, regardless of server timezone settings, so the below stats use only UTC.
+cPanel_log_result=$(grep -H "$(date -d @$time_to_use +%m/%d/%Y:%H:%M:`date -d @$time_to_use +%S|head -c1` -u)" /usr/local/cpanel/logs/access_log|grep $user |grep upload_files)
+if [[ -n "$cPanel_log_result" ]]
+    then
+        echo Found cPanel file manager upload entry when searching /usr/local/cpanel/logs/access_log for $(date -d @$time_to_use "+%m/%d/%Y:%H:%M:`date -d @$time_to_use +%S|head -c1`" -u) . Note the $timestamp_type is converted to UTC, which is what cPanel uses for its access_log, regardless of the servers timezone settings.
+	    echo
+            while read cpanel_entry;
+                do
+                    echo ${bold}$cpanel_entry${normal}
+            done <<< "$cPanel_log_result"
+	echo 
+	echo The cPanel password for $user should be reset, and the local devices of users who have accessed this account should be scanned to make sure they dont have any malware such as keyloggers to prevent re-compromise.
+    else :
+fi
+} #end file_manager_log_dive
+
+###############################################################################
+
+#Function for SFTP login check
+sftp_log_dive () {
+#Only both with this check if all other points of entry return no results
+if [[ -z ${apache_domlog_result}${ftp_log_result}${cPanel_log_result} ]]
+    then
+#Last, we check for SSH logins as the user from any time that day. Unfortunately, this has to be a broad check since SFTP uploads aren't logged.
+sftp_log_result=$(grep -HE "$(date -d @$time_to_use +%b)[[:blank:]]*$(date -d @$time_to_use +%-d)" /var/log/secure* |grep $user |grep -i accept )
+    if [[ -n "$sftp_log_result" ]]
+        then
+        echo Found SSH/SFTP login entry for $user when searching /var/log/secure for an accepted login by $user on $(date -d @$time_to_use '+%b %d').
+        echo
+        while read sftp_entry;
+            do
+                 echo ${bold}$sftp_entry${normal}
+        done <<< "$sftp_log_result"
+        echo
+        echo The above entry could be a false positive, as SFTP uploads arent explicitly logged. Carefully review, and consider resetting the password for the ${bold}$user${normal} user to prevent re-compromise if there is reason to suspect this was the upload method. Local devices of users who have accessed this account should be scanned to make sure they dont have any malware such as keyloggers to prevent re-compromise.
+        else :
+    fi
+else
+:
+fi
+} #end sftp_log_dive
+
+###############################################################################
+
+#function for if nothing was found
+no_log_results () {
+#On the chance that NO log entries are found, suggest a manual review
+if [[ -z ${apache_domlog_result}${ftp_log_result}${cPanel_log_result}${sftp_log_result} ]]
+    then 
+        echo "Unfortunately, no relevant log entries were found. It is recommended that you manually review the logs to see how this file was uploaded. It could also be possible that $file was uploaded prior to the oldest entries of the logs."
+        echo
+        echo "As a last ditch effort, you can attempt to leverage the file's creation timestamp (not normally reported by STAT) by using the -b flag like so:"
+	echo ${bold}filescout -b $abspath ${normal}
+fi
+} #end no_log_results
+
+###############################################################################
+
+chmod_000_reminder () {
+printf "\nDon't forget to    chmod 000 $abspath    if it's malicious! \n"
+} #end chmod_000_reminder
+
+###############################################################################
+
+#Function to print most of the variables for troubleshooting
+debug_vars () {
+dashes
+echo '         DEBUG INFO         '
+dashes
+echo
+echo File:  $file
+echo Absolute path:  $abspath
+echo User:  $user
+echo Timestamp type:  $timestamp_type
+echo time to use:  $time_to_use
+echo change_override:  $change_override
+echo modify_override:  $modify_override
+echo apache_timestamp:  $apache_timestamp
+echo stat month:  $stat_month
+echo stat year:  $stat_year
+} #End debug_vars
+
+###############################################################################
+
+#Parsing the flags provided to the sctipt
+while getopts ":bcmhrt:v" opt; do
+  case $opt in
+
+	r)	deep_dive_override=1
+	;;
+        b)      inputlogic
+		filestats
+                file_birth_timestamp
+                pleskcheck
+                permcheck
+ 		log_diving_header
+		apache_domlog_dive
+		ftp_log_dive
+		file_manager_log_dive
+		sftp_log_dive
+		no_log_results
+		chmod_000_reminder
+		exit
+                
+        ;;
+        c)
+                threeargcheck
+		change_override=1
+        ;;
+        m)
+                threeargcheck
+		modify_override=1
+        ;;
+        h)
+                usage
+        ;;
+	t)
+		fourargcheck
+		time_to_use=$(date -d "$OPTARG" +%s)
+                #Make sure the timestamp provided is actually a timestamp
+		if [ $? -eq 0 ]
+                        then
+                        :
+                        else
+                        echo "Incorrect timestamp provided" >&2
+                        exit 2
+                fi
+
+		user=$3
+		pleskcheck
+		log_diving_header
+		apache_domlog_dive
+		ftp_log_dive
+		file_manager_log_dive
+		sftp_log_dive
+		no_log_results
+		exit
+	;;
+	v)
+		version
+		exit
+	;;
+    \?)
+      echo "Invalid option: -$OPTARG" >&2
+                usage
+      ;;
+  esac
+done
+
+###############################################################################
+
+#Default script usage with no optional flags
+
+twoargcheck
+inputlogic
+inputcheck
+filecheck
+pleskcheck
+filestats
+timestamp_header
+timestamp_logic
+timestamp_overrides
+timestamp_echo
+stat_output
+permcheck
+log_diving_header
+apache_domlog_dive
+ftp_log_dive
+file_manager_log_dive
+sftp_log_dive
+no_log_results
+chmod_000_reminder
+
+#Enable only for debugging
+#debug_vars
