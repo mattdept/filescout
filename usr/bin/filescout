@@ -16,7 +16,7 @@ option4=$4
 
 #For outputting the version of filescout:
 version () {
-echo 'Filescout - Version 2.10'
+echo 'Filescout - Version 2.9'
 }
 
 ###############################################################################
@@ -441,7 +441,7 @@ fi
 #function for if nothing was found
 no_log_results () {
 #On the chance that NO log entries are found, suggest a manual review
-if [[ -z ${apache_domlog_result}${ftp_log_result}${cPanel_log_result}${sftp_log_result} ]]
+if [[ -z ${apache_domlog_result}${ftp_log_result}${cPanel_log_result}${sftp_log_result}${apache_domlog_result_all} ]]
     then 
         echo "Unfortunately, no relevant log entries were found. It is recommended that you manually review the logs to see how this file was uploaded. It could also be possible that $file was uploaded prior to the oldest entries of the logs."
         echo
