@@ -16,7 +16,7 @@ option4=$4
 
 #For outputting the version of filescout:
 version () {
-echo 'Filescout - Version 2.9'
+echo 'Filescout - Version 2.12'
 }
 
 ###############################################################################
@@ -147,11 +147,11 @@ fi
 
 #Generate variables to use for later on
 filestats () {
-user=`stat -c %U $file`
+user=`stat -c %U "$file"`
 #Get the absolute path of the file, makes the output a little more useful if the environments bash prompt does not include the full PWD.
-abspath=`readlink --canonicalize $file`
-mod_time=`stat -c %Y $file`
-change_time=`stat -c %Z $file`
+abspath=`readlink --canonicalize "$file"`
+mod_time=`stat -c %Y "$file"`
+change_time=`stat -c %Z "$file"`
 } #end filestats
 
 ###############################################################################
@@ -171,9 +171,11 @@ deep_dive () {
 if [[ "$deep_dive_override" == "1" ]]
     then
 	#only proceed if a file didn't self-modify itself. Prevents an infinite loop.
-        if [[ "$posted_file" != "$file" ]]
+        if [[ "$posted_file" != "$abspath" ]]
         then
 	    filescout -r "$posted_file"
+        else
+            echo "Loop detected, (did $posted_file modify itself?) exiting."
         fi
 fi
 } #End deep dive
@@ -229,15 +231,15 @@ echo
 stat_output () {
 echo
 #Output of the stat of the absolute path. If Birth is -, then omit that from the output.
-stat $abspath |grep -v 'Birth: -'
+stat "$abspath" |grep -v 'Birth: -'
 } #end stat_output
 
 ###############################################################################
 
 #If the file permisisons are already 000, print a warning, as the timestamp would have been adjusted at the time of chmodding the file.
 permcheck () {
-if [[ "`stat -c %a $abspath`" = "0" ]]
-    then 
+if [[ "`stat -c %a "$abspath"`" = "0" ]]
+    then
 	echo "${bold}[WARNING]  The file permissions on $file are already 000 - The timestamp is no longer likely accurate for determining its point of entry${normal}"
 	echo "If you have taken a stat of the file prior to altering it, you can use the -t flag to give filescout a timestamp and user to investigate"
 fi
@@ -265,7 +267,7 @@ file_birth_timestamp () {
 #So to begin, we need to check and see if the location of the file is on an EXT4 filesystem.
 #Using df -T seems to be the simplest way to get that info.
 echo $abspath
-filesystem_info=$(df -T $abspath |tail -n 1| awk '{print $1" "$2'})
+filesystem_info=$(df -T "$abspath" |tail -n 1| awk '{print $1" "$2'})
 echo filesystem info: $filesystem_info
 
 filesystem_type=$(echo $filesystem_info | awk '{print $2}')
@@ -274,8 +276,8 @@ echo filesystem_type: $filesystem_type
 filesystem_location=$(echo $filesystem_info | awk '{print $1}')
 echo filesystem_location: $filesystem_location
 
-
-
+fs_mount_point=$(df "$abspath" |tail -n 1| awk '{print $6}')
+echo fs_mount_point: $fs_mount_point
 #Now we compare $filesystem_type to see if it matches "ext4".
 #Proceed if it is EXT4, exit with 1 if not and print error
 if [[ "$filesystem_type" == "ext4" ]]
@@ -287,8 +289,16 @@ if [[ "$filesystem_type" == "ext4" ]]
     exit 1
 fi
 
+if [[ "$fs_mount_point" == '/' ]]
+    then
+    relative_to_mountpoint_location=$(echo $abspath |sed "s#^/##g")
+    else
+    relative_to_mountpoint_location=$(echo $abspath |sed "s#^$fs_mount_point/##g")
+fi
+
+echo relative_to_mountpoint_location: $relative_to_mountpoint_location
 #Now at this point, we've established that we're on an ext4 filesystem, so we can proceed with using debugfs and stat to get the crtime.
-creation_time=$(debugfs -R "stat  $abspath" $filesystem_location  2>1 |grep crtime |awk '{print $5" "$6" "$8" "$7}')
+creation_time=$(debugfs -R "stat  $relative_to_mountpoint_location" $filesystem_location  2>1 |grep crtime |awk '{print $5" "$6" "$8" "$7}')
 echo creation_time: $creation_time
 time_to_use=$(date -d "$creation_time" +%s)
 echo creation_time_in_epoch: $time_to_use
@@ -315,7 +325,7 @@ if [[ -n "$apache_domlog_result" ]]
         while read domlog_entry
             do
                 echo ${bold}$domlog_entry${normal}
-		posted_file=$(sed -e 's/[:=]/ /g' /etc/userdatadomains | awk '{print $1"@"$6}' |egrep "^`echo $domlog_entry |cut -d':' -f1 |tr '/' '\n' |tail -1|cut -d "-" -f1`" |cut -d '@' -f2)$(echo $domlog_entry |awk '{print $7}')
+		posted_file=$(sed -e 's/[:=]/ /g' /etc/userdatadomains | awk '{print $1"@"$6}' |egrep "^`echo $domlog_entry |cut -d':' -f1 |tr '/' '\n' |tail -1|cut -d "-" -f1`" |cut -d '@' -f2)$(echo $domlog_entry |awk '{print $7}' |sed "s/%20/\\ /g")
                         
                 echo
 		#Only show the following echo if the POSTed file ends with .php, 
@@ -357,7 +367,7 @@ if [[ -z "$apache_domlog_result" ]]
             while read domlog_entry
                 do
                     echo ${bold}$domlog_entry${normal}
-                    posted_file=$(sed -e 's/[:=]/ /g' /etc/userdatadomains | awk '{print $1"@"$6}' |egrep "^`echo $domlog_entry |cut -d':' -f1 |tr '/' '\n' |tail -1|cut -d "-" -f1`" |cut -d '@' -f2)$(echo $domlog_entry |awk '{print $7}')
+                    posted_file=$(sed -e 's/[:=]/ /g' /etc/userdatadomains | awk '{print $1"@"$6}' |egrep "^`echo $domlog_entry |cut -d':' -f1 |tr '/' '\n' |tail -1|cut -d "-" -f1`" |cut -d '@' -f2)$(echo $domlog_entry |awk '{print $7}' |sed "s/%20/\\ /g")
     
                     echo You should review the above file if you have not already done so.
                     echo
@@ -477,7 +487,33 @@ echo stat year:  $stat_year
 } #End debug_vars
 
 ###############################################################################
+#Reporting usage info
+report_usage () {
+# Author: Luke Kreft
+# Date: 19:04:15 2017-10-15
 
+api_endpoint='https://mattjung.net/cgi-bin/filescout-api.sh'
+
+sshpid=$$
+
+until [ $sshpid -eq 0 ] || grep -q $'\0'"SSH_CLIENT" /proc/${sshpid}/environ
+do
+  sshpid=$(awk '/PPid/{print $2}' /proc/${sshpid}/status);
+done
+
+if [ "$sshpid" -eq 0 ]
+then
+  adminip="localhost"
+else
+  read adminip junk <<< $(awk -vRS='\0' -F '=' '/^SSH_CLIENT/{print $2}' /proc/${sshpid}/environ)
+fi
+
+curl -skL -m 2 "${api_endpoint}/?${adminip}" > /dev/null 2>&1
+} #End report_usage
+
+
+
+###############################################################################
 #Parsing the flags provided to the sctipt
 while getopts ":bcmhrt:v" opt; do
   case $opt in
@@ -496,6 +532,7 @@ while getopts ":bcmhrt:v" opt; do
 		sftp_log_dive
 		no_log_results
 		chmod_000_reminder
+                report_usage
 		exit
                 
         ;;
@@ -530,6 +567,7 @@ while getopts ":bcmhrt:v" opt; do
 		file_manager_log_dive
 		sftp_log_dive
 		no_log_results
+                report_usage
 		exit
 	;;
 	v)
@@ -566,6 +604,6 @@ file_manager_log_dive
 sftp_log_dive
 no_log_results
 chmod_000_reminder
-
+report_usage
 #Enable only for debugging
 #debug_vars
