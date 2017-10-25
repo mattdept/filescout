@@ -325,7 +325,7 @@ if [[ -n "$apache_domlog_result" ]]
         while read domlog_entry
             do
                 echo ${bold}$domlog_entry${normal}
-		posted_file=$(sed -e 's/[:=]/ /g' /etc/userdatadomains | awk '{print $1"@"$6}' |egrep "^`echo $domlog_entry |cut -d':' -f1 |tr '/' '\n' |tail -1|cut -d "-" -f1`" |cut -d '@' -f2)$(echo $domlog_entry |awk '{print $7}' |sed "s/%20/\\ /g")
+		posted_file=$(sed -e 's/[:=]/ /g' /etc/userdatadomains | awk '{print $1"@"$6}' |egrep "^`echo $domlog_entry |cut -d':' -f1 |tr '/' '\n' |tail -1|cut -d "-" -f1`" |cut -d '@' -f2)$(echo $domlog_entry |awk '{print $7}' |sed "s/%20/\\\ /g")
                         
                 echo
 		#Only show the following echo if the POSTed file ends with .php, 
@@ -360,14 +360,14 @@ fi
 #Only being used if $apache_domlog_result was empty
 if [[ -z "$apache_domlog_result" ]]
     then
-        echo "No POST requests for in the apache domlogs, increasing the scope of the search to include any HTTP request type near a 10 second window areound the $timestamp_type"
         apache_domlog_result_all=$(zgrep $apache_timestamp  /usr/local/apache/domlogs/$user/$each* /home/$user/logs/$each*-$stat_month-$stat_year*)
             if [[ -n $apache_domlog_result_all ]]
             then
+            echo "No POST requests for in the apache domlogs, increasing the scope of the search to include any HTTP request type near a 10 second window areound the $timestamp_type. Take these entries with a grain of salt!"
             while read domlog_entry
                 do
                     echo ${bold}$domlog_entry${normal}
-                    posted_file=$(sed -e 's/[:=]/ /g' /etc/userdatadomains | awk '{print $1"@"$6}' |egrep "^`echo $domlog_entry |cut -d':' -f1 |tr '/' '\n' |tail -1|cut -d "-" -f1`" |cut -d '@' -f2)$(echo $domlog_entry |awk '{print $7}' |sed "s/%20/\\ /g")
+                    posted_file=$(sed -e 's/[:=]/ /g' /etc/userdatadomains | awk '{print $1"@"$6}' |egrep "^`echo $domlog_entry |cut -d':' -f1 |tr '/' '\n' |tail -1|cut -d "-" -f1`" |cut -d '@' -f2)$(echo $domlog_entry |awk '{print $7}' |sed "s/%20/\\\ /g")
     
                     echo You should review the above file if you have not already done so.
                     echo
