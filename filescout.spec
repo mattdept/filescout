@@ -1,7 +1,7 @@
 Summary: A command line tool used to investigate the point of entry of malicious files.
 Name: filescout
 Version: 2
-Release: 12
+Release: 13
 Group: mrjung
 BuildArch: noarch
 License: GPL
@@ -28,6 +28,9 @@ install -p -m 644 %{_topdir}/usr/share/man/man1/filescout.1 $RPM_BUILD_ROOT%{_ma
 rm -r -f "$RPM_BUILD_ROOT"
 
 %changelog
+* Sat Oct 28 2017 Matt Jung 2.13
+- Adjusted formatting and fixed output typo
+
 * Mon Oct 16 2017 Matt Jung 2.12
 - Encased $file, $posted_file and $abspath in quotes to work around spaces in file names
 - Converted %20 in URI's to spaces when assigning the posted_file variable

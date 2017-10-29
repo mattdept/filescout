@@ -16,7 +16,7 @@ option4=$4
 
 #For outputting the version of filescout:
 version () {
-echo 'Filescout - Version 2.12'
+echo 'Filescout - Version 2.13'
 }
 
 ###############################################################################
@@ -333,7 +333,7 @@ if [[ -n "$apache_domlog_result" ]]
                 #or a CMS page that doesn't have an associated file (aside from index.php)
 		if [[ "$posted_file" == *.php ]]
 		    then
-			echo The above POST request was directed at this file: $posted_file
+			echo The above POST request was directed at this file:${bold} $posted_file ${normal}
 				
                         #Add extra warning if the POSTed file is directed at /wp-admin/theme-editor.php, 
                         #which is a telltale sign of wp-admin password compromise.
@@ -346,8 +346,6 @@ if [[ -n "$apache_domlog_result" ]]
                     echo
 			
 		fi
-		echo You should review the above file if you have not already done so.
-		echo
 		echo You can also review the log for any other actions taken by that same IP:
 		echo "zgrep $(echo $apache_domlog_result |cut -d ":" -f2 |cut -d " " -f1) $(echo $apache_domlog_result |cut -d ":" -f1)"
 		#Deep dive section, does nothing unless -r is used.
@@ -363,16 +361,12 @@ if [[ -z "$apache_domlog_result" ]]
         apache_domlog_result_all=$(zgrep $apache_timestamp  /usr/local/apache/domlogs/$user/$each* /home/$user/logs/$each*-$stat_month-$stat_year*)
             if [[ -n $apache_domlog_result_all ]]
             then
-            echo "No POST requests for in the apache domlogs, increasing the scope of the search to include any HTTP request type near a 10 second window areound the $timestamp_type. Take these entries with a grain of salt!"
+            echo "No POST requests for in the apache domlogs, increasing the scope of the search to include any HTTP request type near a 10 second window around the $timestamp_type. Take these entries with a grain of salt!"
             while read domlog_entry
                 do
                     echo ${bold}$domlog_entry${normal}
                     posted_file=$(sed -e 's/[:=]/ /g' /etc/userdatadomains | awk '{print $1"@"$6}' |egrep "^`echo $domlog_entry |cut -d':' -f1 |tr '/' '\n' |tail -1|cut -d "-" -f1`" |cut -d '@' -f2)$(echo $domlog_entry |awk '{print $7}' |sed "s/%20/\\\ /g")
     
-                    echo You should review the above file if you have not already done so.
-                    echo
-                    echo You can also review the log for any other actions taken by that same IP:
-                    echo "zgrep $(echo $apache_domlog_result_all |cut -d ":" -f2 |cut -d " " -f1) $(echo $apache_domlog_result_all |cut -d ":" -f1)"
                     #Deep dive section, does nothing unless -r is used.
                     deep_dive
                     echo
