@@ -1,7 +1,7 @@
 Summary: A command line tool used to investigate the point of entry of malicious files.
 Name: filescout
 Version: 2
-Release: 13
+Release: 14
 Group: mrjung
 BuildArch: noarch
 License: GPL
@@ -11,16 +11,17 @@ Requires: coreutils
 
 %files
 %{_bindir}/filescout
-%{_mandir}/man1/filescout.1
+%{_mandir}/man1/filescout.1.gz
 
 %description
 %{summary}
 
 %prep
 rm -rf $RPM_BUILD_ROOT
+
+%install
 mkdir -p $RPM_BUILD_ROOT%{_bindir}
 mkdir -p $RPM_BUILD_ROOT%{_mandir}/man1
-cd $RPM_BUILD_ROOT
 install -p -m 700 %{_topdir}/usr/bin/filescout $RPM_BUILD_ROOT%{_bindir}
 install -p -m 644 %{_topdir}/usr/share/man/man1/filescout.1 $RPM_BUILD_ROOT%{_mandir}/man1/filescout.1
 
@@ -28,6 +29,9 @@ install -p -m 644 %{_topdir}/usr/share/man/man1/filescout.1 $RPM_BUILD_ROOT%{_ma
 rm -r -f "$RPM_BUILD_ROOT"
 
 %changelog
+* Mon Oct 30 2017 Matt Jung 2.14
+- Moved some stuff from prep to install in specfile
+
 * Sat Oct 28 2017 Matt Jung 2.13
 - Adjusted formatting and fixed output typo
 

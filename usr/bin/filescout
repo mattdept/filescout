@@ -16,7 +16,7 @@ option4=$4
 
 #For outputting the version of filescout:
 version () {
-echo 'Filescout - Version 2.13'
+echo 'Filescout - Version 2.14'
 }
 
 ###############################################################################
